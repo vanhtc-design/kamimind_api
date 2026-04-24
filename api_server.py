@@ -1,6 +1,7 @@
 import os
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import tempfile
 import json
@@ -13,6 +14,15 @@ app = FastAPI(
     title="KamiMind Tools API",
     description="API cung cấp các công cụ Rule-based và Flattening cho KamiMind AI Agent.",
     version="1.0.0"
+)
+
+# Thêm cấu hình CORS để cho phép Web Demo gọi API
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Cho phép tất cả các nguồn gọi API
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Thư mục lưu DB tạm thời
