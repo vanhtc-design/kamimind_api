@@ -1,6 +1,7 @@
 import os
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse
+from typing import List
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import tempfile
@@ -29,40 +30,59 @@ app.add_middleware(
 DB_PATH = "db_mon_hoc.json"
 
 @app.post("/api/v1/flatten-ctdt", summary="Trải phẳng CTĐT thành JSON (Giai đoạn 1)")
-async def flatten_ctdt(file: UploadFile = File(...)):
+async def flatten_ctdt(files: List[UploadFile] = File(...)):
     """
-    Nhận file CTĐT (.docx) và trả về dữ liệu cấu trúc JSON (Môn học, Ma trận 15.3, PLO).
+    Nhận một hoặc nhiều file CTĐT (.docx) và trả về dữ liệu cấu trúc JSON (Môn học, Ma trận 15.3, PLO) gộp lại.
     """
-    if not file.filename.endswith('.docx'):
-        raise HTTPException(status_code=400, detail="Chỉ hỗ trợ định dạng .docx")
+    if not files:
+        raise HTTPException(status_code=400, detail="Không có file nào được tải lên.")
         
     try:
-        # Lưu file tạm để xử lý
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".docx") as temp_file:
-            content = await file.read()
-            temp_file.write(content)
-            temp_path = temp_file.name
+        all_courses = []
+        all_matrix = []
+        all_plos = []
+        processed_files = []
 
-        # Gọi hàm trích xuất
-        courses, matrix, plos = extract_ctdt_data(temp_path)
+        for file in files:
+            if not file.filename.endswith('.docx'):
+                continue
+                
+            # Lưu file tạm để xử lý
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".docx") as temp_file:
+                content = await file.read()
+                temp_file.write(content)
+                temp_path = temp_file.name
+
+            try:
+                # Gọi hàm trích xuất
+                courses, matrix, plos = extract_ctdt_data(temp_path)
+                all_courses.extend(courses)
+                all_matrix.extend(matrix)
+                all_plos.extend(plos)
+                processed_files.append(file.filename)
+            finally:
+                # Xóa file tạm
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
         
-        # Xóa file tạm
-        os.remove(temp_path)
-        
-        # Cập nhật lại db_mon_hoc.json cục bộ để API check rule có thể dùng
+        if not processed_files:
+            raise HTTPException(status_code=400, detail="Không có file .docx nào hợp lệ để xử lý.")
+
+        # Cập nhật lại db_mon_hoc.json cục bộ (Gộp tất cả môn học của các ngành)
         with open(DB_PATH, "w", encoding="utf-8") as f:
-            json.dump(courses, f, ensure_ascii=False, indent=2)
+            json.dump(all_courses, f, ensure_ascii=False, indent=2)
 
         return JSONResponse(content={
             "status": "success",
-            "message": "Trích xuất dữ liệu CTĐT thành công.",
+            "message": f"Trích xuất dữ liệu thành công từ {len(processed_files)} CTĐT.",
             "data": {
-                "courses_count": len(courses),
-                "matrix_count": len(matrix),
-                "plos_count": len(plos),
-                "courses": courses,
-                "matrix": matrix,
-                "plos": plos
+                "processed_files": processed_files,
+                "courses_count": len(all_courses),
+                "matrix_count": len(all_matrix),
+                "plos_count": len(all_plos),
+                "courses": all_courses,
+                "matrix": all_matrix,
+                "plos": all_plos
             }
         })
     except Exception as e:
