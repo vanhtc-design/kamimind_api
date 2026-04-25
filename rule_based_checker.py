@@ -8,8 +8,20 @@ class RuleBasedChecker:
     def __init__(self, db_path="db_mon_hoc.json"):
         self.db_path = db_path
         self.db_mon_hoc = []
+        self.db_mon_hoc = []
         self.db_matrix = []
+        self.db_plos = []
         self.load_db()
+
+    def find_table_by_keywords(self, doc, keywords):
+        for table in doc.tables:
+            header_text = ""
+            for r in range(min(3, len(table.rows))):
+                header_text += " " + " ".join([cell.text for cell in table.rows[r].cells])
+            header_text = header_text.lower()
+            if all(k.lower() in header_text for k in keywords):
+                return table
+        return None
 
     def load_db(self):
         if os.path.exists(self.db_path):
@@ -20,6 +32,7 @@ class RuleBasedChecker:
                     if isinstance(data, dict):
                         self.db_mon_hoc = data.get("courses", [])
                         self.db_matrix = data.get("matrix", [])
+                        self.db_plos = data.get("plos", [])
                     else:
                         self.db_mon_hoc = data
             except Exception as e:
@@ -131,16 +144,61 @@ class RuleBasedChecker:
             
             if db_course_matrix:
                 # Check if Syllabus has a mapping table
-                if not any(kw in full_text.lower() for kw in ["ma trận tích hợp", "cloi", "plon", "pin.k"]):
-                    errors.append("LỖI CẤU TRÚC: Thiếu bảng Ma trận tích hợp giữa CLO, PLO và PI.")
-                else:
-                    # Semantic check would be in Stage 3, but we can do a count check here
-                    expected_clos = set(m["CLO"] for m in db_course_matrix.get("Mappings", []))
-                    # Simple heuristic to find CLOs in full text
-                    found_clos = set(re.findall(r'CLO\d+', full_text.upper()))
-                    missing_clos = expected_clos - found_clos
-                    if missing_clos:
-                        errors.append(f"LỖI NỘI DUNG: Thiếu chuẩn đầu ra {', '.join(missing_clos)} so với CTĐT.")
+            if db_course_matrix:
+                # --- KIỂM TRA MỨC ĐỘ BLOOM (ẢNH 2) ---
+                # 1. Tìm mức Bloom cao nhất yêu cầu trong CTĐT (15.3) cho môn này
+                mappings = db_course_matrix.get("Mappings", [])
+                if mappings:
+                    max_bloom_required = max([m.get("Level", 0) for m in mappings if isinstance(m.get("Level"), int)] or [0])
+                    
+                    # 2. Tìm bảng B.1 (Ảnh 4) trong Syllabus để xem các bài đánh giá
+                    t_assessment = self.find_table_by_keywords(doc, ["loại hình đánh giá", "phương pháp", "trọng số"])
+                    if t_assessment:
+                        # Giả định cột 3 là CLO (CĐR MH được đánh giá)
+                        # Chúng ta cần AI hoặc Regex để bóc tách các bài đánh giá đạt mức nào.
+                        # Tạm thời: Kiểm tra xem có bài nào có trọng số lớn (Cuối kỳ) đánh giá CLO đó không.
+                        found_max_level = False
+                        # Ở đây chúng ta cần bóc tách kỹ hơn ở Stage 3 (AI)
+                        # Nhưng Logic Rule-based: Nếu Cuối kỳ đánh giá CLO quan trọng nhất thì tạm coi là đạt.
+                        pass
+
+                # --- ĐỐI SOÁT MA TRẬN 11.3 (ẢNH 3) ---
+                t_11_3 = self.find_table_by_keywords(doc, ["ma trận tích hợp", "clo", "pi"])
+                if t_11_3:
+                    # So khớp từng cell của 11.3 với 15.3 trong DB
+                    syllabus_mappings = []
+                    # Bóc tách đơn giản 11.3
+                    header_cells = [c.text.strip() for c in t_11_3.rows[0].cells]
+                    for r_idx in range(1, len(t_11_3.rows)):
+                        row = t_11_3.rows[r_idx].cells
+                        clo = self.clean_text(row[0].text)
+                        for c_idx in range(1, len(row)):
+                            val = self.clean_text(row[c_idx].text)
+                            if val and val.isdigit():
+                                pi = header_cells[c_idx]
+                                syllabus_mappings.append({"CLO": clo, "PI": pi, "Level": int(val)})
+                    
+                    # So sánh với DB
+                    db_mappings = db_course_matrix.get("Mappings", [])
+                    for db_m in db_mappings:
+                        # Tìm mapping tương ứng trong syllabus
+                        match = next((sm for sm in syllabus_mappings if sm["CLO"] == db_m["CLO"] and db_m["PI"] in sm["PI"]), None)
+                        if not match:
+                            errors.append(f"LỖI MA TRẬN: Bảng 11.3 thiếu mapping {db_m['CLO']} -> {db_m['PI']} như CTĐT.")
+                        elif match["Level"] != db_m["Level"]:
+                            errors.append(f"LỖI MA TRẬN: Mức độ {db_m['CLO']}->{db_m['PI']} là {match['Level']}, CTĐT yêu cầu {db_m['Level']}.")
+
+                # --- KIỂM TRA NỘI DUNG PLO (ẢNH 1) ---
+                for plo_item in self.db_plos:
+                    ma_plo = plo_item.get("Ma_PLO")
+                    if ma_plo and ma_plo in full_text:
+                        # Kiểm tra xem mô tả có khớp nguyên văn không
+                        db_desc = plo_item.get("Mo_Ta", "")
+                        if db_desc and db_desc not in full_text:
+                            # Fuzzy check
+                            ratio = SequenceMatcher(None, db_desc.lower(), full_text.lower()).ratio()
+                            if ratio < 0.5: # Rất khác
+                                errors.append(f"CẢNH BÁO NỘI DUNG: Mô tả của {ma_plo} có vẻ không khớp nguyên văn với CTĐT.")
 
             return errors
 

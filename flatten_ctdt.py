@@ -196,17 +196,36 @@ def extract_ctdt_data(docx_path):
         t15_3, _ = find_table_by_keywords(doc, ["clo", "plo", "học phần"])
     matrix = extract_mapping_15_3(t15_3)
     
-    # 3. Extract PLO Text (for phase 3)
+    # 3. Extract PLO/PI Text & Levels (Image 1)
     plo_list = []
-    t_plo, _ = find_table_by_keywords(doc, ["plo", "mức độ", "chuẩn đầu ra"], exclude_keywords=["học phần"])
+    # Identify the PLO/PI table by keywords in header
+    t_plo, _ = find_table_by_keywords(doc, ["ký hiệu", "csđg", "mô tả", "mức độ"], exclude_keywords=["học phần"])
+    if not t_plo:
+        t_plo, _ = find_table_by_keywords(doc, ["plo", "pi", "dự thảo", "đạt được"], exclude_keywords=["học phần"])
+        
     if t_plo:
-        for row in t_plo.rows:
-            cells = [clean_text(c.text) for c in row.cells]
-            plo_match = next((c for c in cells if re.match(r'^PLO\d+$', c)), None)
-            if plo_match:
-                idx = cells.index(plo_match)
-                if idx + 1 < len(cells):
-                    plo_list.append({"Ma_PLO": plo_match, "Mo_Ta": cells[idx+1]})
+        current_plo = ""
+        for row_idx in range(1, len(t_plo.rows)): # Skip header
+            try:
+                cells = [clean_text(c.text) for c in t_plo.rows[row_idx].cells]
+                if len(cells) < 3: continue
+                
+                # Column 0: PLO code, Column 1: PI code, Column 2: Description, Column 3: Level
+                plo_code = cells[0]
+                pi_code = cells[1]
+                desc = cells[2]
+                level = cells[3] if len(cells) > 3 else ""
+                
+                if plo_code: current_plo = plo_code
+                
+                if current_plo or pi_code:
+                    plo_list.append({
+                        "Ma_PLO": current_plo,
+                        "Ma_PI": pi_code,
+                        "Mo_Ta": desc,
+                        "Level": level
+                    })
+            except: continue
 
     return courses, matrix, plo_list
 
