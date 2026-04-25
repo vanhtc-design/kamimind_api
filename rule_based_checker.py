@@ -125,7 +125,9 @@ class RuleBasedChecker:
 
             # 6. Mapping Matrix Check (15.3 Consistency)
             # Find the mapping table in Syllabus
-            db_course_matrix = next((m for m in self.db_matrix if m.get("Ten_HP", "").lower() in ten_hp.lower() or m.get("STT") == db_course.get("STT")), None)
+            db_course_matrix = None
+            if db_course:
+                db_course_matrix = next((m for m in self.db_matrix if (m.get("Ten_HP") and ten_hp and m.get("Ten_HP", "").lower() in ten_hp.lower()) or (m.get("STT") == db_course.get("STT"))), None)
             
             if db_course_matrix:
                 # Check if Syllabus has a mapping table
