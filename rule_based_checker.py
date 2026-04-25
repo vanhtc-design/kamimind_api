@@ -56,13 +56,13 @@ class RuleBasedChecker:
             errors = []
 
             # 1. Basic Form Check
-            title_keywords = ["đề cương môn học", "syllabus", "course specification"]
+            title_keywords = ["đề cương học phần", "đề cương môn học", "syllabus", "course specification"]
             if not any(kw in full_text.lower() for kw in title_keywords):
-                errors.append("LỖI FORM: Không tìm thấy tiêu đề 'ĐỀ CƯƠNG MÔN HỌC' hoặc 'SYLLABUS'.")
+                errors.append("LỖI FORM: Không tìm thấy tiêu đề 'ĐỀ CƯƠNG HỌC PHẦN' hoặc 'SYLLABUS'.")
 
             # 2. Extract Key Info
-            ma_hp = self.find_value_after_keyword(full_text, ["Mã số môn học", "Mã học phần", "Course code"])
-            ten_hp = self.find_value_after_keyword(full_text, ["Tên môn học", "Course name"])
+            ma_hp = self.find_value_after_keyword(full_text, ["Mã số học phần", "Mã học phần", "Mã số môn học", "Course code"])
+            ten_hp = self.find_value_after_keyword(full_text, ["Tên học phần", "Tên môn học", "Course name"])
             so_tc_str = self.find_value_after_keyword(full_text, ["Số tín chỉ", "Number of credits", "Credits"])
             
             # 3. Consistency with CTĐT
@@ -89,10 +89,10 @@ class RuleBasedChecker:
                     errors.append(f"LỖI ĐỐI SOÁT: Số tín chỉ '{so_tc_str}' không khớp với CTĐT ({db_tc}).")
                 
                 # Check Pre-requisites
-                tq_syllabus = self.find_value_after_keyword(full_text, ["Môn học trước", "Học phần trước", "Prerequisites"])
+                tq_syllabus = self.find_value_after_keyword(full_text, ["Học phần trước", "Môn học trước", "Prerequisites"])
                 db_tq = db_course.get("Mon_Tien_Quyet", "")
                 if db_tq and db_tq != "-" and db_tq.lower() not in tq_syllabus.lower():
-                    errors.append(f"LỖI ĐỐI SOÁT: CTĐT yêu cầu môn tiên quyết là '{db_tq}', nhưng đề cương ghi '{tq_syllabus}'.")
+                    errors.append(f"LỖI ĐỐI SOÁT: CTĐT yêu cầu học phần trước là '{db_tq}', nhưng đề cương ghi '{tq_syllabus}'.")
 
             # 4. Credit Distribution & Hours Calculation
             # Total = TC * 50
@@ -110,7 +110,7 @@ class RuleBasedChecker:
                         errors.append(f"LỖI QUY CHẾ: Tổng giờ học ({actual_total}) không khớp với số tín chỉ ({so_tc} TC * 50 = {expected_total} giờ).")
 
             # 5. Reference Year Check (>= 2020)
-            ref_section_keywords = ["Tài liệu bắt buộc", "Tài liệu học tập", "Learning resources", "Textbooks"]
+            ref_section_keywords = ["Tài liệu học tập", "Tài liệu bắt buộc", "Learning resources", "Textbooks"]
             for kw in ref_section_keywords:
                 idx = full_text.lower().find(kw.lower())
                 if idx != -1:
