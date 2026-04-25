@@ -190,11 +190,27 @@ def extract_ctdt_data(docx_path):
     t12_2, _ = find_table_by_keywords(doc, ["mã học phần", "tên học phần"])
     courses = extract_course_list_12_2(t12_2)
     
-    # 2. Extract Mapping Matrix (15.3)
-    t15_3, _ = find_table_by_keywords(doc, ["clo", "pi", "học phần"])
-    if not t15_3:
-        t15_3, _ = find_table_by_keywords(doc, ["clo", "plo", "học phần"])
-    matrix = extract_mapping_15_3(t15_3)
+    # 2. Extract Mapping Matrix (15.3) - Support multiple tables if split
+    matrix = []
+    # Keywords to identify mapping tables
+    keywords_matrix = ["clo", "pi", "học phần"]
+    
+    for table in doc.tables:
+        header_text = ""
+        try:
+            for r in range(min(5, len(table.rows))):
+                header_text += " " + " ".join([cell.text for cell in table.rows[r].cells])
+        except: continue
+        
+        if all(k.lower() in header_text.lower() for k in keywords_matrix):
+            table_data = extract_mapping_15_3(table)
+            # Merge logic: if a course is split across tables, merge its mappings
+            for new_course in table_data:
+                existing = next((m for m in matrix if m["Ten_HP"] == new_course["Ten_HP"] or (m["STT"] == new_course["STT"] and m["STT"] != "")), None)
+                if existing:
+                    existing["Mappings"].extend(new_course["Mappings"])
+                else:
+                    matrix.append(new_course)
     
     # 3. Extract PLO/PI Text & Levels (Image 1)
     plo_list = []
