@@ -143,8 +143,6 @@ class RuleBasedChecker:
                 db_course_matrix = next((m for m in self.db_matrix if (m.get("Ten_HP") and ten_hp and m.get("Ten_HP", "").lower() in ten_hp.lower()) or (m.get("STT") == db_course.get("STT"))), None)
             
             if db_course_matrix:
-                # Check if Syllabus has a mapping table
-            if db_course_matrix:
                 # --- KIỂM TRA MỨC ĐỘ BLOOM (ẢNH 2) ---
                 # 1. Tìm mức Bloom cao nhất yêu cầu trong CTĐT (15.3) cho môn này
                 mappings = db_course_matrix.get("Mappings", [])
