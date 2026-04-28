@@ -50,13 +50,13 @@ def extract_course_list_12_2(table):
     
     for idx, text in enumerate(header_cells):
         if "stt" in text or "tt" == text: col_map["stt"] = idx
-        elif "mã học phần" in text or "mã hp" in text: col_map["ma_hp"] = idx
+        elif ("mã học phần" in text or "mã hp" in text) and "tiên quyết" not in text and "tiền đề" not in text and "trước" not in text: col_map["ma_hp"] = idx
         elif "tên học phần" in text or "tên hp" in text: col_map["ten_hp"] = idx
         elif "số tín chỉ" in text or "số tc" in text: col_map["so_tc"] = idx
         elif "lý thuyết" in text or "lt" == text: col_map["lt"] = idx
         elif "thực hành" in text or "th" == text: col_map["th"] = idx
         elif "khác" in text: col_map["khac"] = idx
-        elif "tiên quyết" in text or "tq" in text: col_map["tq"] = idx
+        elif "tiên quyết" in text or "tq" in text or "tiền đề" in text or "trước" in text: col_map["tq"] = idx
         elif "học kỳ" in text or "hk" in text: col_map["hk"] = idx
 
     # If column roles weren't found in one row, search the whole header block
@@ -64,13 +64,13 @@ def extract_course_list_12_2(table):
         row_cells = [clean_text(c.text).lower() for c in table.rows[r].cells]
         for idx, text in enumerate(row_cells):
             if col_map["stt"] == -1 and ("stt" in text or "tt" == text): col_map["stt"] = idx
-            if col_map["ma_hp"] == -1 and ("mã học phần" in text or "mã hp" in text): col_map["ma_hp"] = idx
+            if col_map["ma_hp"] == -1 and ("mã học phần" in text or "mã hp" in text) and "tiên quyết" not in text and "tiền đề" not in text and "trước" not in text: col_map["ma_hp"] = idx
             if col_map["ten_hp"] == -1 and ("tên học phần" in text or "tên hp" in text): col_map["ten_hp"] = idx
             if col_map["so_tc"] == -1 and ("số tín chỉ" in text or "số tc" in text): col_map["so_tc"] = idx
             if col_map["lt"] == -1 and ("lý thuyết" in text or "lt" == text): col_map["lt"] = idx
             if col_map["th"] == -1 and ("thực hành" in text or "th" == text): col_map["th"] = idx
             if col_map["khac"] == -1 and "khác" in text: col_map["khac"] = idx
-            if col_map["tq"] == -1 and ("tiên quyết" in text or "tq" in text): col_map["tq"] = idx
+            if col_map["tq"] == -1 and ("tiên quyết" in text or "tq" in text or "tiền đề" in text or "trước" in text): col_map["tq"] = idx
             if col_map["hk"] == -1 and ("học kỳ" in text or "hk" in text): col_map["hk"] = idx
 
     results = []
