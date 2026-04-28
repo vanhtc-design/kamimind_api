@@ -133,7 +133,7 @@ def extract_mapping_15_3(table):
     pi_cells = table.rows[pi_row_idx].cells
     plo_cells = table.rows[plo_row_idx].cells
     
-    for idx in range(clo_col + 1, len(table.columns)):
+    for idx in range(clo_col + 1, len(pi_cells)):
         try:
             pi_val = clean_text(pi_cells[idx].text)
             plo_val = clean_text(plo_cells[idx].text)
