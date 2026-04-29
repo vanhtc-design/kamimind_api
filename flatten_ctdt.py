@@ -9,8 +9,10 @@ def find_table_by_keywords(doc, keywords, exclude_keywords=None):
         header_text = ""
         try:
             # Check first few rows for keywords to identify the table
-            for r in range(min(5, len(table.rows))):
-                header_text += " " + " ".join([cell.text for cell in table.rows[r].cells])
+            for tr in table._tbl.tr_lst[:5]:
+                for tc in tr.tc_lst:
+                    tc_text = "".join(node.text if node.text else "" for node in tc.iter() if node.tag.endswith('t'))
+                    header_text += " " + clean_text(tc_text)
         except:
             continue
             
@@ -21,6 +23,25 @@ def find_table_by_keywords(doc, keywords, exclude_keywords=None):
             return table, i
     return None, -1
 
+def get_raw_table_texts(table):
+    """Extract text from a table using raw XML to bypass python-docx O(N^2) grid calculations."""
+    rows = []
+    for tr in table._tbl.tr_lst:
+        row_cells = []
+        for tc in tr.tc_lst:
+            tc_text = "".join(node.text if node.text else "" for node in tc.iter() if node.tag.endswith('t'))
+            row_cells.append(clean_text(tc_text))
+        # Handle merged cells by extending the row to the max width found so far if needed, or just append
+        rows.append(row_cells)
+    
+    # Pad rows to have the same length to avoid IndexError on data rows
+    if rows:
+        max_cols = max(len(r) for r in rows)
+        for r in rows:
+            r.extend([""] * (max_cols - len(r)))
+            
+    return rows
+
 def clean_text(text):
     """Normalize text by removing extra spaces and newlines."""
     if not text: return ""
@@ -30,18 +51,21 @@ def extract_course_list_12_2(table):
     """Extract course list from Table 12.2 (Khung chương trình)."""
     if not table: return []
     
+    raw_rows = get_raw_table_texts(table)
+    if not raw_rows: return []
+    
     # Identify column roles
     header_rows_count = 1
     # Search for the row containing column names
-    for r_idx in range(min(5, len(table.rows))):
-        row_text = " ".join([cell.text.lower() for cell in table.rows[r_idx].cells])
+    for r_idx in range(min(5, len(raw_rows))):
+        row_text = " ".join([cell.lower() for cell in raw_rows[r_idx]])
         if "mã học phần" in row_text and "tên học phần" in row_text:
             header_rows_count = r_idx + 1
             break
             
     # Map column indices
     # We'll use the last header row to find column roles
-    header_cells = [clean_text(c.text).lower() for c in table.rows[header_rows_count-1].cells]
+    header_cells = [c.lower() for c in raw_rows[header_rows_count-1]]
     
     col_map = {
         "stt": -1, "ma_hp": -1, "ten_hp": -1, "so_tc": -1, 
@@ -61,7 +85,7 @@ def extract_course_list_12_2(table):
 
     # If column roles weren't found in one row, search the whole header block
     for r in range(header_rows_count):
-        row_cells = [clean_text(c.text).lower() for c in table.rows[r].cells]
+        row_cells = [c.lower() for c in raw_rows[r]]
         for idx, text in enumerate(row_cells):
             if col_map["stt"] == -1 and ("stt" in text or "tt" == text): col_map["stt"] = idx
             if col_map["ma_hp"] == -1 and ("mã học phần" in text or "mã hp" in text) and "tiên quyết" not in text and "tiền đề" not in text and "trước" not in text: col_map["ma_hp"] = idx
@@ -74,22 +98,22 @@ def extract_course_list_12_2(table):
             if col_map["hk"] == -1 and ("học kỳ" in text or "hk" in text): col_map["hk"] = idx
 
     results = []
-    for r_idx in range(header_rows_count, len(table.rows)):
+    for r_idx in range(header_rows_count, len(raw_rows)):
         try:
-            row = table.rows[r_idx].cells
-            ma_hp = clean_text(row[col_map["ma_hp"]].text) if col_map["ma_hp"] != -1 else ""
+            row = raw_rows[r_idx]
+            ma_hp = row[col_map["ma_hp"]] if col_map["ma_hp"] != -1 else ""
             if not ma_hp or len(ma_hp) < 3: continue # Skip category headers
             
             course = {
-                "STT": clean_text(row[col_map["stt"]].text) if col_map["stt"] != -1 else "",
+                "STT": row[col_map["stt"]] if col_map["stt"] != -1 else "",
                 "Ma_HP": ma_hp,
-                "Ten_HP": clean_text(row[col_map["ten_hp"]].text) if col_map["ten_hp"] != -1 else "",
-                "So_TC": clean_text(row[col_map["so_tc"]].text) if col_map["so_tc"] != -1 else "",
-                "Ly_Thuyet": clean_text(row[col_map["lt"]].text) if col_map["lt"] != -1 else "",
-                "Thuc_Hanh": clean_text(row[col_map["th"]].text) if col_map["th"] != -1 else "",
-                "Khac": clean_text(row[col_map["khac"]].text) if col_map["khac"] != -1 else "",
-                "Mon_Tien_Quyet": clean_text(row[col_map["tq"]].text) if col_map["tq"] != -1 else "",
-                "Hoc_Ky": clean_text(row[col_map["hk"]].text) if col_map["hk"] != -1 else ""
+                "Ten_HP": row[col_map["ten_hp"]] if col_map["ten_hp"] != -1 else "",
+                "So_TC": row[col_map["so_tc"]] if col_map["so_tc"] != -1 else "",
+                "Ly_Thuyet": row[col_map["lt"]] if col_map["lt"] != -1 else "",
+                "Thuc_Hanh": row[col_map["th"]] if col_map["th"] != -1 else "",
+                "Khac": row[col_map["khac"]] if col_map["khac"] != -1 else "",
+                "Mon_Tien_Quyet": row[col_map["tq"]] if col_map["tq"] != -1 else "",
+                "Hoc_Ky": row[col_map["hk"]] if col_map["hk"] != -1 else ""
             }
             results.append(course)
         except: continue
@@ -100,16 +124,19 @@ def extract_mapping_15_3(table):
     """Extract mapping from Table 15.3 (CLO to PI/PLO)."""
     if not table: return []
 
+    raw_rows = get_raw_table_texts(table)
+    if not raw_rows: return []
+
     pi_row_idx, plo_row_idx, header_rows_count = -1, -1, 0
     
     # Scan for PI row (numbers like 1.1)
-    for r_idx in range(min(10, len(table.rows))):
-        cells = [cell.text.strip() for cell in table.rows[r_idx].cells]
+    for r_idx in range(min(10, len(raw_rows))):
+        cells = [c.strip() for c in raw_rows[r_idx]]
         if any(re.search(r'\d+\.\d+', c) for c in cells):
             pi_row_idx = r_idx
             # Find PLO row above
             for prev_r in range(r_idx - 1, -1, -1):
-                prev_cells = [cell.text.strip().upper() for cell in table.rows[prev_r].cells]
+                prev_cells = [c.strip().upper() for c in raw_rows[prev_r]]
                 if any("PLO" in c for c in prev_cells):
                     plo_row_idx = prev_r
                     break
@@ -122,7 +149,7 @@ def extract_mapping_15_3(table):
     # Map column roles
     stt_col, hk_col, ten_hp_col, clo_col = 0, 1, 2, 3
     for r in range(header_rows_count):
-        cells = [c.text.strip().lower() for c in table.rows[r].cells]
+        cells = [c.strip().lower() for c in raw_rows[r]]
         for idx, text in enumerate(cells):
             if "stt" in text or "tt" == text: stt_col = idx
             elif "học kỳ" in text or "hk" == text: hk_col = idx
@@ -130,16 +157,16 @@ def extract_mapping_15_3(table):
             elif "clo" in text: clo_col = idx
 
     col_mapping = {}
-    pi_cells = table.rows[pi_row_idx].cells
-    plo_cells = table.rows[plo_row_idx].cells
+    pi_cells = raw_rows[pi_row_idx]
+    plo_cells = raw_rows[plo_row_idx]
     
     for idx in range(clo_col + 1, len(pi_cells)):
         try:
-            pi_val = clean_text(pi_cells[idx].text)
-            plo_val = clean_text(plo_cells[idx].text)
+            pi_val = pi_cells[idx]
+            plo_val = plo_cells[idx]
             if not plo_val: # Handle merged
                 for back_idx in range(idx - 1, clo_col, -1):
-                    prev_plo = clean_text(plo_cells[back_idx].text)
+                    prev_plo = plo_cells[back_idx]
                     if prev_plo:
                         plo_val = prev_plo
                         break
@@ -151,18 +178,18 @@ def extract_mapping_15_3(table):
     current_course = None
     c_stt, c_hk, c_ten = "", "", ""
     
-    for r_idx in range(header_rows_count, len(table.rows)):
+    for r_idx in range(header_rows_count, len(raw_rows)):
         try:
-            cells = table.rows[r_idx].cells
-            stt = clean_text(cells[stt_col].text)
-            ten = clean_text(cells[ten_hp_col].text)
-            clo = clean_text(cells[clo_col].text)
+            cells = raw_rows[r_idx]
+            stt = cells[stt_col]
+            ten = cells[ten_hp_col]
+            clo = cells[clo_col]
             
             if not clo or "tổng" in ten.lower(): continue
             
             if stt: c_stt = stt
             if ten: c_ten = ten
-            hk = clean_text(cells[hk_col].text)
+            hk = cells[hk_col]
             if hk: c_hk = hk
             
             if not current_course or (stt and stt != current_course.get("STT")):
@@ -170,12 +197,13 @@ def extract_mapping_15_3(table):
                 current_course = {"STT": c_stt, "Ten_HP": c_ten, "Hoc_Ky": c_hk, "Mappings": []}
             
             for col_idx, meta in col_mapping.items():
-                val = clean_text(cells[col_idx].text)
-                if val and re.search(r'[234xX]', val):
-                    level = int(val) if val.isdigit() else 3
-                    current_course["Mappings"].append({
-                        "CLO": clo, "PLO": meta["PLO"], "PI": meta["PI"], "Level": level
-                    })
+                if col_idx < len(cells):
+                    val = cells[col_idx]
+                    if val and re.search(r'[234xX]', val):
+                        level = int(val) if val.isdigit() else 3
+                        current_course["Mappings"].append({
+                            "CLO": clo, "PLO": meta["PLO"], "PI": meta["PI"], "Level": level
+                        })
         except: continue
 
     if current_course: results.append(current_course)
@@ -194,8 +222,10 @@ def extract_ctdt_data(docx_path):
     for table in doc.tables:
         header_text = ""
         try:
-            for r in range(min(5, len(table.rows))):
-                header_text += " " + " ".join([cell.text for cell in table.rows[r].cells])
+            for tr in table._tbl.tr_lst[:5]:
+                for tc in tr.tc_lst:
+                    tc_text = "".join(node.text if node.text else "" for node in tc.iter() if node.tag.endswith('t'))
+                    header_text += " " + clean_text(tc_text)
         except: continue
         
         header_text = header_text.lower()
@@ -214,8 +244,10 @@ def extract_ctdt_data(docx_path):
     for table in doc.tables:
         header_text = ""
         try:
-            for r in range(min(5, len(table.rows))):
-                header_text += " " + " ".join([cell.text for cell in table.rows[r].cells])
+            for tr in table._tbl.tr_lst[:5]:
+                for tc in tr.tc_lst:
+                    tc_text = "".join(node.text if node.text else "" for node in tc.iter() if node.tag.endswith('t'))
+                    header_text += " " + clean_text(tc_text)
         except: continue
         
         if all(k.lower() in header_text.lower() for k in keywords_matrix):
