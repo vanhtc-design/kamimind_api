@@ -186,9 +186,25 @@ def extract_ctdt_data(docx_path):
     print(f"Processing: {docx_path}")
     doc = docx.Document(docx_path)
     
-    # 1. Extract Course List (12.2)
-    t12_2, _ = find_table_by_keywords(doc, ["mã học phần", "tên học phần"])
-    courses = extract_course_list_12_2(t12_2)
+    # 1. Extract Course List (12.2) - Support multiple tables and dummy tables
+    courses = []
+    keywords_courses = ["mã học phần", "tên học phần"]
+    exclude_keywords = ["clo", "pi"]
+    
+    for table in doc.tables:
+        header_text = ""
+        try:
+            for r in range(min(5, len(table.rows))):
+                header_text += " " + " ".join([cell.text for cell in table.rows[r].cells])
+        except: continue
+        
+        header_text = header_text.lower()
+        if all(k.lower() in header_text for k in keywords_courses) and not any(ek.lower() in header_text for ek in exclude_keywords):
+            table_courses = extract_course_list_12_2(table)
+            for new_c in table_courses:
+                if new_c["Ma_HP"] and not any(c["Ma_HP"] == new_c["Ma_HP"] for c in courses):
+                    courses.append(new_c)
+
     
     # 2. Extract Mapping Matrix (15.3) - Support multiple tables if split
     matrix = []
